@@ -4,9 +4,16 @@ import threading
 import numpy as np
 from sklearn.cluster import KMeans
 import math
+from openshowvar.openshowvar import OpenShowVar
 
 # Flag to control the video loop
 video_running = True
+
+# robot communication
+robot = OpenShowVar(host='192.168.1.1', port=7000)  # Replace with your robot's IP and port
+
+
+###### SEARCH CAMERA #########3
 
 # Function to find the USB camera index (assuming it is not 0)
 def find_usb_camera_index():
@@ -18,7 +25,9 @@ def find_usb_camera_index():
     return -1
 
 
-# function to find orientation 
+
+######## ORIENTATION OF ROBOT ###################
+ 
 def determine_orientation(circles):
     # Calculate the angle between the first two circles and the horizontal axis
     x1, y1 = circles[0][:2]
@@ -45,6 +54,9 @@ def determine_orientation(circles):
     else:
         return "Unknown"
 
+
+#### VIDEO CAPTURE AND PROCESSING ####
+
 # Function to capture video and detect circles and rectangles
 def video_capture():
     global video_running
@@ -68,17 +80,11 @@ def video_capture():
         gray = cv2.medianBlur(gray, 5)
 
         blurred = cv2.GaussianBlur(gray, (15, 15), 0)
-
-        # Apply adaptive thresholding
-        adaptive_thresh = cv2.adaptiveThreshold(
-            blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-        )
-
         # Detect circles in the frame
         circles = cv2.HoughCircles(
             blurred, 
             cv2.HOUGH_GRADIENT, 
-            dp=1.2, 
+            dp=1, 
             minDist=30,
             param1=50, 
             param2=30, 
@@ -91,7 +97,7 @@ def video_capture():
         if circles is not None: # If circles are detected
             circles = np.uint16(np.around(circles))
 
-            if len(circles[0]) >= 4:  # Ensure there are enough circles to form Legos
+            if len(circles[0]) == 4:  # Ensure there are enough circles to form Legos
                 
                 n_clusters = len(circles[0]) // 4
                 if n_clusters > 0:
@@ -103,7 +109,7 @@ def video_capture():
                     for i in range(max(labels) + 1):
                         lego_circles = circles[0][labels == i]
 
-                        if len(lego_circles) == 4:
+                        if len(lego_circles) > 1:
                             lego_count += 1
                             sorted_lego_circles = sorted(lego_circles, key=lambda x: (x[0], x[1])) # Sort by x, then y
 
@@ -119,11 +125,11 @@ def video_capture():
                             # Determine the orientation
                             orientation = determine_orientation(sorted_lego_circles)
                             print(f"Lego {lego_count} orientation: {orientation}")
-                            cv2.putText(frame, orientation, (mid_x, mid_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+                            cv2.putText(frame, orientation, (mid_x, mid_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA) # write the color on the frame
 
                             # Extract color information and print the color of the lego
                             lego_color = extract_lego_color(frame)
-                            cv2.putText(frame, lego_color, (mid_x, mid_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+                            cv2.putText(frame, lego_color, (mid_x, mid_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA) # write the color on the frame
                             
         if lego_count > 0:
             print(f"Total Legos detected: {lego_count}")
@@ -139,12 +145,7 @@ def video_capture():
     vid.release()
     cv2.destroyAllWindows()
 
-def send_midpoint(mid_x, mid_y):
-    try:
-        print(mid_x, mid_y)
-    except Exception as e:
-        print("Error:", e)
-
+# Function to extract the color of the lego
 def extract_lego_color(frame):
     
     # setting values for base colors 
@@ -168,44 +169,46 @@ def extract_lego_color(frame):
         send_color("Red")
         print("Red")
         
+
+######## Robot Communication ##########
+
+# Send midpoint coordinates to the robot
+def send_midpoint(mid_x, mid_y):
+    try:
+        # Convert the coordinates to a string
+        coordinates = f"{mid_x},{mid_y}"
+        
+        # Send the coordinates to the robot
+        robot.write("POS", coordinates)
+    except Exception as e:
+        print("Error:", e)
+
 # function to send the orientation to the robot
 def send_orientation(orientation):
     try:
-        if orientation == "vertical":
-            print("vertical")
-        elif orientation == "horizontal":
-            print("horizontal")
-        elif orientation == "diagonal right":
-            print("diagonal right")
-        elif orientation == "diagonal left":
-            print("diagonal left")
-             
+        # Send the orientation to the robot
+        robot.write("ORIENTATION", orientation)
     except Exception as e:
-        print("Error:", e)      
+        print("Error:", e)  
 
 # Function to send color to the robot
 def send_color(color):
     try:
-        if color == "Blue":
-            print("Blue")
-        elif color == "Green":
-            print("Green")
-        elif color == "Red":
-            print("Red")
+        # Send the color to the robot
+        robot.write("COLOR", color)
+    except Exception as e:
+        print("Error:", e)
+        
+        
+def send_flag(flag):
+    try:
+        # Send the flag to the robot
+        robot.write("FLAG", str(flag))
     except Exception as e:
         print("Error:", e)
 
-# Function to send flag to the robot
-def send_flag(flag):
-    try:
-        if flag == 1:
-            print(1)
-        elif flag == 2:
-            print(2)
-        elif flag == 3:
-            print(3)
-    except Exception as e:
-        print("Error:", e)
+
+### INTERFACE ###
 
 # Button click event handlers
 def draw_one_clicked():
