@@ -10,16 +10,9 @@ from py_openshowvar import openshowvar
 video_running = True
 
 # Robot communication setup
+# https://pypi.org/project/py-openshowvar/
 robot = openshowvar('192.168.1.1', 7000)  # Replace with your robot's IP and port
-
-try:
-    robot.can_connect()
-    print("Connection to the robot established successfully.")
-except Exception as e:
-    print(f"Failed to connect to the robot: {e}")
-
-# Global variable for selected draw type
-selected_draw_type = 1
+# robot.can_connect()  # Uncomment to check connection with the robot
 
 ###### SEARCH CAMERA #########
 
@@ -35,9 +28,6 @@ def find_usb_camera_index():
 ######## ORIENTATION OF ROBOT ###################
 
 def determine_orientation(circles):
-    if len(circles) < 2:
-        return "Undefined"
-
     # Calculate the angle between the first two circles and the horizontal axis
     x1, y1 = circles[0][:2]
     x2, y2 = circles[1][:2]
@@ -47,9 +37,6 @@ def determine_orientation(circles):
     except ZeroDivisionError:
         # Handle the case where the denominator is zero
         return "Undefined"
-    except OverflowError:
-        # Handle overflow error
-        return "Overflow"
 
     # Normalize the angle to be within -180 to 180 degrees
     angle = (angle + 180) % 360 - 180
@@ -135,15 +122,16 @@ def video_capture():
                             # Determine the orientation
                             orientation = determine_orientation(sorted_lego_circles)
                             print(f"Lego {lego_count} orientation: {orientation}")
+                            # cv2.putText(frame, orientation, (mid_x, mid_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)  # Write the orientation on the frame
 
                             # Extract color information and print the color of the lego
                             lego_color = extract_lego_color(frame)
-
-                            # Send the coordinates and additional data to the robot
-                            send_robot_approx(mid_x, mid_y, lego_color, orientation)
+                            cv2.putText(frame, lego_color, (mid_x, mid_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)  # Write the color on the frame
 
         if lego_count > 0:
             print(f"Total Legos detected: {lego_count}")
+            print(f"Lego {lego_count} midpoint coordinates: ({mid_x}, {mid_y})")
+            send_midpoint(mid_x, mid_y)  # Send midpoint coordinates to the robot
 
         # Display the resulting frame
         cv2.imshow('frame', frame)
@@ -168,14 +156,14 @@ def extract_lego_color(frame):
 
     # Displaying the most prominent color
     if (b_mean > g_mean and b_mean > r_mean):
-        color = "Blue"
+        print("Blue")
+        send_color("Blue")  # Send color to the robot
     elif (g_mean > r_mean and g_mean > b_mean):
-        color = "Green"
+        print("Green")
+        send_color("Green")  # Send color to the robot
     else:
-        color = "Red"
-    
-    send_color(color)  # Send color to the robot
-    return color
+        print("Red")
+        send_color("Red")  # Send color to the robot
 
 ######## Robot Communication ##########
 
@@ -184,7 +172,7 @@ def send_midpoint(mid_x, mid_y):
     try:
         # Convert the coordinates to a string
         coordinates = f"{mid_x},{mid_y}"
-        
+         
         # Send the coordinates to the robot
         robot.write("POS", coordinates)
     except Exception as e:
@@ -213,67 +201,19 @@ def send_flag(flag):
         robot.write("FLAG", str(flag))
     except Exception as e:
         print("Error:", e)
-        
-####### Send approximate coordinates to the robot #######        
-
-def send_robot_approx(mid_x, mid_y, color, orientation):
-    try:
-        # Lego height
-        lego_height = 4  # lego height in cm 
-
-        # Define approach height above the Lego's top surface
-        approach_height_above_lego = 1  # Adjust this value as needed
-
-        # Calculate approach height
-        approach_z = -(lego_height + approach_height_above_lego)
-
-        goal_z = 0
-
-        # Define the order of colors to prioritize based on selected draw type
-        if selected_draw_type == 1:
-            color_order = ["Red", "Blue", "Green"]
-        elif selected_draw_type == 2:
-            color_order = ["Blue", "Green", "Red"]
-        elif selected_draw_type == 3:
-            color_order = ["Green", "Red", "Blue"]
-
-        # If the detected color is in the order, set the priority
-        if color in color_order:
-            priority = color_order.index(color) + 1
-        else:
-            priority = len(color_order) + 1  # Set higher priority for other colors
-
-        # Forming approach and goal positions
-        approach_position = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}" # valores do ABC nao sei
-        goal_position = f"{{X {mid_x}, Y {mid_y}, Z {goal_z}, A 0, B 0, C 0}}"
-
-        # Sending coordinates, orientation, and priority to the robot
-        robot.write("APPROACH_POS", approach_position)
-        robot.write("GOAL_POS", goal_position)
-        robot.write("COLOR", color)
-        robot.write("ORIENTATION", orientation)
-        robot.write("PRIORITY", str(priority))
-    except Exception as e:
-        print("Error:", e)
 
 ### INTERFACE ###
 
 # Button click event handlers
 def draw_one_clicked():
-    global selected_draw_type
-    selected_draw_type = 1
     print("Button 1")
     send_flag(1)  # Send flag to the robot
 
 def draw_two_clicked():
-    global selected_draw_type
-    selected_draw_type = 2
     print("Button 2")
     send_flag(2)  # Send flag to the robot
 
 def draw_three_clicked():
-    global selected_draw_type
-    selected_draw_type = 3
     print("Button 3")
     send_flag(3)  # Send flag to the robot
 
