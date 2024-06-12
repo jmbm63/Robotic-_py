@@ -134,11 +134,11 @@ def video_capture():
                             # Determine the orientation
                             orientation = determine_orientation(sorted_lego_circles)
                             print(f"Lego {lego_count} orientation: {orientation}")
-                            # cv2.putText(frame, orientation, (mid_x, mid_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)  # Write the orientation on the frame
+                            cv2.putText(frame, orientation, (mid_x, mid_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)  # Write the orientation on the frame
 
                             # Extract color information and print the color of the lego
                             lego_color = extract_lego_color(frame)
-                            # cv2.putText(frame, lego_color, (mid_x, mid_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)  # Write the color on the frame
+                            cv2.putText(frame, lego_color, (mid_x, mid_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)  # Write the color on the frame
 
                             # Send the coordinates and additional data to the robot
                             send_robot_approx(mid_x, mid_y, lego_color, orientation)
@@ -228,26 +228,39 @@ def send_robot_approx(mid_x, mid_y, color, orientation):
         approach_z = -(lego_height + approach_height_above_lego)
 
         goal_z = 0
-
-        # Define the order of colors to prioritize
-        color_order = ["Red", "Blue", "Green"]
-
-        # If the detected color is in the order, set the priority
-        if color in color_order:
-            priority = color_order.index(color) + 1
-        else:
-            priority = len(color_order) + 1  # Set higher priority for other colors
-
-        # Forming approach and goal positions
-        approach_position = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}" # valores do ABC nao sei
-        goal_position = f"{{X {mid_x}, Y {mid_y}, Z {goal_z}, A 0, B 0, C 0}}"
-
-        # Sending coordinates, orientation, and priority to the robot
-        robot.write("APPROACH_POS", approach_position)
-        robot.write("GOAL_POS", goal_position)
-        robot.write("COLOR", color)
-        robot.write("ORIENTATION", orientation)
-        robot.write("PRIORITY", str(priority))
+        
+        # Send the coordinates to the robot based on the color
+        if(color == "Red"):
+            # Forming approach and goal positions
+            approach_position_Red = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}" # valores do ABC nao sei
+            goal_position_Red = f"{{X {mid_x}, Y {mid_y}, Z {goal_z}, A 0, B 0, C 0}}"
+            
+            # Sending coordinates, orientation, and priority to the robot
+            robot.write("APPROACH_POS_RED_LEGO", approach_position_Red)
+            robot.write("GOAL_POS_RED_LEGO", goal_position_Red)
+            robot.write("COLOR", color)
+            robot.write("ORIENTATION_RED_LEGO", orientation)
+        
+        elif(color == "Green"):
+            approach_position_Green = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}" # valores do ABC nao sei
+            goal_position_Green = f"{{X {mid_x}, Y {mid_y}, Z {goal_z}, A 0, B 0, C 0}}"
+            
+            # Sending coordinates, orientation, and priority to the robot
+            robot.write("APPROACH_POS_GREEN_LEGO", approach_position_Green)
+            robot.write("GOAL_POS_GREEN_LEGO", goal_position_Green)
+            robot.write("COLOR", color)
+            robot.write("ORIENTATION_GREEN_LEGO", orientation)
+            
+        elif(color == "Blue"):
+            approach_position_Blue = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}" # valores do ABC nao sei
+            goal_position_Blue = f"{{X {mid_x}, Y {mid_y}, Z {goal_z}, A 0, B 0, C 0}}"
+            
+            # Sending coordinates, orientation, and priority to the robot
+            robot.write("APPROACH_POS_BLUE_LEGO", approach_position_Blue)
+            robot.write("GOAL_POS_BLUE_LEGO", goal_position_Blue)
+            robot.write("COLOR", color)
+            robot.write("ORIENTATION_BLUE_LEGO", orientation)
+        
     except Exception as e:
         print("Error:", e)
 
