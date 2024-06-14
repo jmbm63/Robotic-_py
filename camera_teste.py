@@ -131,6 +131,12 @@ def video_capture():
                             mid_y = int(sum([coord[1] for coord in sorted_lego_circles]) / 4)
                             cv2.circle(frame, (mid_x, mid_y), 5, (255, 255, 0), -1)  # Draw midpoint
 
+                            #Todo: Calcular a orientação do quadrado preto
+                            #Todo: ver a parte do quadrado preto, em que se vai ter varios de modo a conseguir fazer o calculo dos pixeis 
+                            #Todo: com base nisto depois vai se fazer o calculo das coordenadas.
+                            
+                            
+                        
                             # Determine the orientation
                             orientation = determine_orientation(sorted_lego_circles)
                             print(f"Lego {lego_count} orientation: {orientation}")
