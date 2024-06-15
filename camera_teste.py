@@ -205,6 +205,7 @@ def pixel_to_cm(x, y, origin, ratio):
     y_cm = (y - origin[1]) * ratio
     return x_cm, y_cm
 
+
 # Function to extract the color of the lego
 def extract_lego_color(frame):
     # Setting values for base colors
