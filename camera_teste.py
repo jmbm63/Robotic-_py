@@ -80,6 +80,10 @@ def video_capture():
         print("Could not open camera")
         return
 
+    work_area_defined = False
+    top_left_square = None
+    pixel_to_cm_ratio = None
+
     while video_running:
         ret, frame = vid.read()
         if not ret:
@@ -90,15 +94,16 @@ def video_capture():
         gray = cv2.medianBlur(gray, 5)
 
         blurred = cv2.GaussianBlur(gray, (15, 15), 0)
+
         # Detect circles in the frame
         circles = cv2.HoughCircles(
-            blurred, 
-            cv2.HOUGH_GRADIENT, 
-            dp=1, 
+            blurred,
+            cv2.HOUGH_GRADIENT,
+            dp=1,
             minDist=30,
-            param1=50, 
-            param2=30, 
-            minRadius=15, 
+            param1=50,
+            param2=30,
+            minRadius=15,
             maxRadius=30
         )
 
@@ -131,12 +136,6 @@ def video_capture():
                             mid_y = int(sum([coord[1] for coord in sorted_lego_circles]) / 4)
                             cv2.circle(frame, (mid_x, mid_y), 5, (255, 255, 0), -1)  # Draw midpoint
 
-                            #Todo: Calcular a orientação do quadrado preto
-                            #Todo: ver a parte do quadrado preto, em que se vai ter varios de modo a conseguir fazer o calculo dos pixeis 
-                            #Todo: com base nisto depois vai se fazer o calculo das coordenadas.
-                            
-                            
-                        
                             # Determine the orientation
                             orientation = determine_orientation(sorted_lego_circles)
                             print(f"Lego {lego_count} orientation: {orientation}")
@@ -146,8 +145,29 @@ def video_capture():
                             lego_color = extract_lego_color(frame)
                             cv2.putText(frame, lego_color, (mid_x, mid_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)  # Write the color on the frame
 
-                            # Send the coordinates and additional data to the robot
-                            send_robot_approx(mid_x, mid_y, lego_color, orientation)
+                            if work_area_defined:
+                                # Transform coordinates from pixels to cm
+                                mid_x_cm, mid_y_cm = pixel_to_cm(mid_x, mid_y, top_left_square, pixel_to_cm_ratio)
+                                send_robot_approx(mid_x_cm, mid_y_cm, lego_color, orientation)
+
+        # black squares : work area
+        if not work_area_defined:
+            # Detect black squares to define the work area
+            black_squares = detect_black_squares(blurred)
+
+            if len(black_squares) == 3:
+                # Define the work area
+                top_left_square = min(black_squares, key=lambda x: (x[0], x[1]))
+                top_right_square = min(black_squares, key=lambda x: (x[0], -x[1]))
+                bottom_left_square = min(black_squares, key=lambda x: (-x[0], x[1]))
+
+                # Calculate the pixel-to-cm ratio
+                distance_px = np.linalg.norm(np.array(top_left_square[:2]) - np.array(top_right_square[:2]))
+                distance_cm = 10  # Assuming the distance between squares is 10 cm
+                pixel_to_cm_ratio = distance_cm / distance_px
+
+                work_area_defined = True
+                print("Work area defined.")
 
         if lego_count > 0:
             print(f"Total Legos detected: {lego_count}")
@@ -160,6 +180,30 @@ def video_capture():
 
     vid.release()
     cv2.destroyAllWindows()
+
+# Function to detect black squares
+def detect_black_squares(blurred):
+    black_squares = []
+    # Use thresholding to detect black squares
+    _, thresh = cv2.threshold(blurred, 50, 255, cv2.THRESH_BINARY_INV)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    for contour in contours:
+        approx = cv2.approxPolyDP(contour, 0.04 * cv2.arcLength(contour, True), True)
+        if len(approx) == 4 and cv2.contourArea(approx) > 100:
+            M = cv2.moments(approx)
+            if M["m00"] != 0:
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                black_squares.append((cX, cY))
+
+    return black_squares
+
+# Function to convert pixels to cm
+def pixel_to_cm(x, y, origin, ratio):
+    x_cm = (x - origin[0]) * ratio
+    y_cm = (y - origin[1]) * ratio
+    return x_cm, y_cm
 
 # Function to extract the color of the lego
 def extract_lego_color(frame):
@@ -175,49 +219,19 @@ def extract_lego_color(frame):
 
     # Displaying the most prominent color
     if (b_mean > g_mean and b_mean > r_mean):
-        print("Blue")
-        send_color("Blue")  # Send color to the robot
+        return "B" #blue
     elif (g_mean > r_mean and g_mean > b_mean):
-        print("Green")
-        send_color("Green")  # Send color to the robot
+        return "G" #green
     else:
-        print("Red")
-        send_color("Red")  # Send color to the robot
+        return "R" #red
 
 ######## Robot Communication ##########
-
-# Send midpoint coordinates to the robot
-def send_midpoint(mid_x, mid_y):
-    try:
-        # Convert the coordinates to a string
-        coordinates = f"{mid_x},{mid_y}"
-        
-        # Send the coordinates to the robot
-        robot.write("POS", coordinates)
-    except Exception as e:
-        print("Error:", e)
-
-# Function to send the orientation to the robot
-def send_orientation(orientation):
-    try:
-        # Send the orientation to the robot
-        robot.write("ORIENTATION", orientation)
-    except Exception as e:
-        print("Error:", e)  
-
-# Function to send color to the robot
-def send_color(color):
-    try:
-        # Send the color to the robot
-        robot.write("COLOR", color)
-    except Exception as e:
-        print("Error:", e)
 
 # Function to send a flag to the robot
 def send_flag(flag):
     try:
-        # Send the flag to the robot
-        robot.write("FLAG", str(flag))
+       
+        robot.write("F", str(flag)) # flag
     except Exception as e:
         print("Error:", e)
 
@@ -225,7 +239,7 @@ def send_flag(flag):
 def send_robot_approx(mid_x, mid_y, color, orientation):
     try:
         # Lego height
-        lego_height = 4  # lego height in cm 
+        lego_height = 4  # lego height in cm
 
         # Define approach height above the Lego's top surface
         approach_height_above_lego = 1  # Adjust this value as needed
@@ -234,39 +248,39 @@ def send_robot_approx(mid_x, mid_y, color, orientation):
         approach_z = -(lego_height + approach_height_above_lego)
 
         goal_z = 0
-        
+
         # Send the coordinates to the robot based on the color
-        if(color == "Red"):
+        if color == "R":
             # Forming approach and goal positions
-            approach_position_Red = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}" # valores do ABC nao sei
+            approach_position_Red = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}"  # valores do ABC nao sei
             goal_position_Red = f"{{X {mid_x}, Y {mid_y}, Z {goal_z}, A 0, B 0, C 0}}"
-            
+
             # Sending coordinates, orientation, and priority to the robot
             robot.write("APPROACH_POS_RED_LEGO", approach_position_Red)
             robot.write("GOAL_POS_RED_LEGO", goal_position_Red)
-            robot.write("COLOR", color)
-            robot.write("ORIENTATION_RED_LEGO", orientation)
-        
-        elif(color == "Green"):
-            approach_position_Green = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}" # valores do ABC nao sei
+            robot.write("C", color)
+            robot.write("O", orientation)
+
+        elif color == "G":
+            approach_position_Green = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}"  # valores do ABC nao sei
             goal_position_Green = f"{{X {mid_x}, Y {mid_y}, Z {goal_z}, A 0, B 0, C 0}}"
-            
+
             # Sending coordinates, orientation, and priority to the robot
             robot.write("APPROACH_POS_GREEN_LEGO", approach_position_Green)
             robot.write("GOAL_POS_GREEN_LEGO", goal_position_Green)
-            robot.write("COLOR", color)
-            robot.write("ORIENTATION_GREEN_LEGO", orientation)
-            
-        elif(color == "Blue"):
-            approach_position_Blue = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}" # valores do ABC nao sei
+            robot.write("C", color)
+            robot.write("O", orientation)
+
+        elif color == "B":
+            approach_position_Blue = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}"  # valores do ABC nao sei
             goal_position_Blue = f"{{X {mid_x}, Y {mid_y}, Z {goal_z}, A 0, B 0, C 0}}"
-            
+
             # Sending coordinates, orientation, and priority to the robot
             robot.write("APPROACH_POS_BLUE_LEGO", approach_position_Blue)
             robot.write("GOAL_POS_BLUE_LEGO", goal_position_Blue)
-            robot.write("COLOR", color)
-            robot.write("ORIENTATION_BLUE_LEGO", orientation)
-        
+            robot.write("C", color)
+            robot.write("O", orientation)
+
     except Exception as e:
         print("Error:", e)
 
@@ -292,8 +306,8 @@ def create_interface():
     root.title("Robot Controller")
     root.geometry('600x600')
 
-    button1 = tk.Button(root, 
-                        text="Draw 1", 
+    button1 = tk.Button(root,
+                        text="Draw 1",
                         command=draw_one_clicked,
                         width=15,
                         height=2,
@@ -304,9 +318,9 @@ def create_interface():
                         padx=10,
                         pady=5)
     button1.pack(padx=20, pady=20)
-    
-    button2 = tk.Button(root, 
-                        text="Draw 2", 
+
+    button2 = tk.Button(root,
+                        text="Draw 2",
                         command=draw_two_clicked,
                         width=15,
                         height=2,
@@ -317,9 +331,9 @@ def create_interface():
                         padx=10,
                         pady=5)
     button2.pack(padx=20, pady=20)
-    
-    button3 = tk.Button(root, 
-                        text="Draw 3", 
+
+    button3 = tk.Button(root,
+                        text="Draw 3",
                         command=draw_three_clicked,
                         width=15,
                         height=2,
