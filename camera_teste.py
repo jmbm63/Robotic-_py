@@ -31,6 +31,10 @@ def find_usb_camera_index():
             return index
     return -1
 
+
+
+
+
 ######## ORIENTATION OF ROBOT ###################
 
 def determine_orientation(circles):
@@ -147,7 +151,7 @@ def video_capture():
 
                             if work_area_defined:
                                 # Transform coordinates from pixels to cm
-                                mid_x_cm, mid_y_cm = pixel_to_cm(mid_x, mid_y, top_left_square, pixel_to_cm_ratio)
+                                mid_x_cm, mid_y_cm = pixel_to_mm(mid_x, mid_y, top_left_square, pixel_to_mm_ratio)
                                 send_robot_approx(mid_x_cm, mid_y_cm, lego_color, orientation)
 
         # black squares : work area
@@ -164,7 +168,7 @@ def video_capture():
                 # Calculate the pixel-to-cm ratio
                 distance_px = np.linalg.norm(np.array(top_left_square[:2]) - np.array(top_right_square[:2]))
                 distance_cm = 10  # Assuming the distance between squares is 10 cm
-                pixel_to_cm_ratio = distance_cm / distance_px
+                pixel_to_mm_ratio = distance_cm / distance_px
 
                 work_area_defined = True
                 print("Work area defined.")
@@ -180,6 +184,7 @@ def video_capture():
 
     vid.release()
     cv2.destroyAllWindows()
+
 
 # Function to detect black squares
 def detect_black_squares(blurred):
@@ -200,10 +205,10 @@ def detect_black_squares(blurred):
     return black_squares
 
 # Function to convert pixels to cm
-def pixel_to_cm(x, y, origin, ratio):
-    x_cm = (x - origin[0]) * ratio
-    y_cm = (y - origin[1]) * ratio
-    return x_cm, y_cm
+def pixel_to_mm(x, y, origin, ratio):
+    x_mm = (x - origin[0]) * ratio * 10  # Convert cm to mm
+    y_mm = (y - origin[1]) * ratio * 10  # Convert cm to mm
+    return x_mm, y_mm
 
 
 # Function to extract the color of the lego
@@ -237,16 +242,19 @@ def send_flag(flag):
         print("Error:", e)
 
 # Function to send approximation coordinates to the robot
+# Function to send approximation coordinates to the robot
 def send_robot_approx(mid_x, mid_y, color, orientation):
     try:
         # Lego height
         lego_height = 4  # lego height in cm
+        lego_height_mm = lego_height * 10  # Convert cm to mm
 
         # Define approach height above the Lego's top surface
         approach_height_above_lego = 1  # Adjust this value as needed
+        approach_height_above_lego_mm = approach_height_above_lego * 10  # Convert cm to mm
 
-        # Calculate approach height
-        approach_z = -(lego_height + approach_height_above_lego)
+        # Calculate approach height in mm
+        approach_z = -(lego_height_mm + approach_height_above_lego_mm)
 
         goal_z = 0
 
@@ -345,7 +353,10 @@ def create_interface():
                         padx=10,
                         pady=5)
     button3.pack(padx=20, pady=20)
-
+    
+    
+    
+    
     root.mainloop()
     global video_running
     video_running = False  # Stop the video capture loop when Tkinter window closes
