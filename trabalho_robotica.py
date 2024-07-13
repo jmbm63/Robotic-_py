@@ -6,9 +6,20 @@ from sklearn.cluster import KMeans
 import math
 from py_openshowvar import openshowvar
 
-# Flag to control the video loop
+# Global variables for video loop control
 video_running = True
 process_frame = False  # Flag to indicate when to process a frame
+
+# Global variables for Lego processing
+top_left_square = None
+pixel_to_mm_ratio = None
+lego_count = 0
+lego_color = "Unknown"
+orientation = "Unknown"
+mid_x = 0
+mid_y = 0
+lego_data = []  # Global variable for Lego data storage
+
 
 # Robot communication setup
 robot = openshowvar('192.168.1.1', 7000)  # Replace with your robot's IP and port
@@ -18,46 +29,33 @@ try:
     print("Connection to the robot established successfully.")
 except Exception as e:
     print(f"Failed to connect to the robot: {e}")
-    
-
-#Fucntion to print Colors, orientation and coordinates of the lego, and amount of legos    
-def call_Print(lego_count,lego_color, orientation, mid_x, mid_y):
-    
-    print("Lego Count: ", lego_count)
-    print("Lego Color: ", lego_color)
-    print("Lego Orientation: ", orientation)
-    print("Lego Coordinates: ", mid_x, mid_y)
-    
 
 
-######## ORIENTATION OF Lego ###################
-""" 
-Determines the orientation of the Lego block based on the angle between the first two circles.
-The orientation can be horizontal, vertical, diagonal right, diagonal left, or unknown.
 
-:param circles: List of circles detected in the frame
-:return: Orientation of the Lego block
-"""
+# Function to print Lego information
+def call_Print(lego_count, lego_color, orientation, mid_x, mid_y):
+    print("Lego Count:", lego_count)
+    print("Lego Color:", lego_color)
+    print("Lego Orientation:", orientation)
+    print("Lego Coordinates:", mid_x, mid_y)
 
+# Function to determine the orientation of Lego blocks
 def determine_orientation(circles):
     if len(circles) < 2:
         return "Undefined"
 
-    # Calculate the angle between the first two circles and the horizontal axis
     x1, y1 = circles[0][:2]
     x2, y2 = circles[1][:2]
 
     try:
-        angle = math.atan2(y2 - y1, x2 - x1) * 180 / np.pi # Calculate the angle in degrees
+        angle = math.atan2(y2 - y1, x2 - x1) * 180 / np.pi
     except ZeroDivisionError:
         return "Undefined"
     except OverflowError:
         return "Overflow"
 
-    
-    angle = (angle + 180) % 360 - 180 # Normalize the angle to be within -180 to 180 degrees
+    angle = (angle + 180) % 360 - 180
 
-    
     if -15 <= angle <= 15 or 165 <= angle <= 180 or -180 <= angle <= -165:
         return "H"  # Horizontal
     elif 75 <= angle <= 105 or -105 <= angle <= -75:
@@ -67,18 +65,9 @@ def determine_orientation(circles):
     elif -75 < angle < -15:
         return "DL"  # Diagonal left
     else:
-        return "Unknown"    
+        return "Unknown"
 
-
-
-
-###### SEARCH CAMERA #########
-
-"""  
-Function to find the USB camera index (assuming it is not 0)
-returns the index of the USB/SmartPhone camera 
-"""
-
+# Function to find USB camera index
 def find_usb_camera_index():
     for index in range(1, 10):  # Start from 1 to skip the built-in camera
         vid = cv2.VideoCapture(index)
@@ -87,20 +76,11 @@ def find_usb_camera_index():
             return index
     return -1
 
-
-
-
-#### VIDEO CAPTURE AND PROCESSING ####
-
-"""
-Function to capture video 
-In this function is called:
-- process_frame_data, where it will be the done the frame processing
-"""
+# Function to capture video
 def video_capture():
     global video_running, process_frame
-    camera_index = find_usb_camera_index() # find camera
-    
+    camera_index = find_usb_camera_index()
+
     if camera_index == -1:
         print("No camera found")
         return
@@ -127,100 +107,86 @@ def video_capture():
     vid.release()
     cv2.destroyAllWindows()
 
-
-'''
-Function to process the captured frame
-The function processes the frame to detect circles and rectangles.
-Four circles are used to form a Lego block.
-
-In this function is called:
-- extract_lego_color, to extract the color of the Lego block
-- determine_orientation, to determine the orientation of the Lego block
-- pixel_to_mm, to convert the pixel coordinates to mm coordinates
-- send_robot_approx, to send the approximation coordinates to the robot
-
-kmeans function https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html
-HoughCircles function https://docs.opencv.org/3.4/d4/d70/tutorial_hough_circle.html
-GaussianBlur function https://docs.opencv.org/3.4/d4/d13/tutorial_py_filtering.html
-'''
+# Function to process each frame
 def process_frame_data(frame):
-    global top_left_square, pixel_to_mm_ratio
+    global top_left_square, pixel_to_mm_ratio, lego_count, lego_color, orientation, mid_x, mid_y, lego_data
 
-    # Convert frame to grayscale
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     gray = cv2.medianBlur(gray, 5)
-    blurred = cv2.GaussianBlur(gray, (15, 15), 0) # filter the image
-    
-    # Detect black squares
+    blurred = cv2.GaussianBlur(gray, (15, 15), 0)
+
     black_squares = detect_black_squares(blurred)
     if black_squares:
-        top_left_square = black_squares[0]  # Assuming the first detected square is the top-left square
-        pixel_to_mm_ratio = 1  # Assuming a dummy ratio for now, you should replace this with the actual ratio
+        top_left_square = black_squares[0]
+        pixel_to_mm_ratio = 1  # Adjust this based on your calibration
 
         for square in black_squares:
             cv2.rectangle(frame, (square[0] - 5, square[1] - 5), (square[0] + 5, square[1] + 5), (0, 0, 255), 2)
 
-    # Detect circles in the frame
-    circles = cv2.HoughCircles(
-        blurred,
-        cv2.HOUGH_GRADIENT,
-        dp=1,
-        minDist=30,
-        param1=50,
-        param2=30,
-        minRadius=15,
-        maxRadius=30
-    )
+        circles = cv2.HoughCircles(
+            blurred,
+            cv2.HOUGH_GRADIENT,
+            dp=1,
+            minDist=25,
+            param1=30,
+            param2=20,
+            minRadius=10,
+            maxRadius=35
+        )
 
-    lego_count = 0
-    if circles is not None:  # If circles are detected
-        circles = np.uint16(np.around(circles)) 
+        if circles is not None:
+            circles = np.uint16(np.around(circles))
 
-        if len(circles[0]) == 4:  # Ensure there are enough circles to form Legos
-            n_clusters = len(circles[0]) // 4 # Number of Legos detected
-            if n_clusters > 0:
-                kmeans = KMeans(n_clusters=n_clusters, random_state=0) 
-                kmeans.fit(circles[0][:, :2])
-                labels = kmeans.labels_
+            # Filter circles based on size
+            filtered_circles = []
+            for circle in circles[0, :]:
+                x, y, r = circle
+                if 10 <= r <= 35:  # Adjust these values based on your expected circle radius range
+                    filtered_circles.append(circle)
+                    cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
+                    cv2.circle(frame, (x, y), 2, (0, 0, 255), 3)
 
-                for i in range(max(labels) + 1):
-                    lego_circles = circles[0][labels == i]
+            if len(filtered_circles) >= 4:
+                kmeans_data = np.array([(circle[0], circle[1]) for circle in filtered_circles])
+                kmeans = KMeans(n_clusters=len(filtered_circles) // 4)
+                kmeans.fit(kmeans_data)
+                centers = kmeans.cluster_centers_
 
-                    if len(lego_circles) > 1:
-                        lego_count += 1
-                        sorted_lego_circles = sorted(lego_circles, key=lambda x: (x[0], x[1]))
+                lego_data = []  # Reset lego_data list
 
-                        for (x, y, r) in sorted_lego_circles:
-                            cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
-                            cv2.circle(frame, (x, y), 2, (0, 0, 255), 3)
+                for center in centers:
+                    mid_x, mid_y = center
 
-                        # Calculate the midpoint of the square based on the four circles
-                        mid_x = int(sum([coord[0] for coord in sorted_lego_circles]) / 4)
-                        mid_y = int(sum([coord[1] for coord in sorted_lego_circles]) / 4)
-                        cv2.circle(frame, (mid_x, mid_y), 5, (255, 255, 0), -1)
+                    if top_left_square is not None and pixel_to_mm_ratio is not None:
+                        mid_x_mm, mid_y_mm = pixel_to_mm(mid_x, mid_y, top_left_square, pixel_to_mm_ratio)
+                        lego_color = extract_lego_color(frame, int(mid_x), int(mid_y))
+                        orientation = determine_orientation(filtered_circles)
+
+                        lego_data.append({
+                            "mid_x": mid_x_mm,
+                            "mid_y": mid_y_mm,
+                            "color": lego_color,
+                            "orientation": orientation
+                        })
+
+                        #print(f"Lego Center Coordinates (mm): {mid_x_mm:.2f}, {mid_y_mm:.2f}")
                         
-                        
-                        lego_color = extract_lego_color(frame) # Call color function
-                        cv2.putText(frame, lego_color, (mid_x, mid_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA) # Display color
 
-                        orientation = determine_orientation(sorted_lego_circles) # Call Orientation function
-                        #print(f"Lego {lego_count} orientation: {orientation}")
-                        cv2.putText(frame, orientation, (mid_x, mid_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA) # Display orientation
+                        cv2.circle(frame, (int(mid_x), int(mid_y)), 10, (255, 0, 0), -1)
 
-                        
-                        # call function to calculate the top left square and the pixel to mm ratio
-                        if top_left_square is not None and pixel_to_mm_ratio is not None:
-                            mid_x_cm, mid_y_cm = pixel_to_mm(mid_x, mid_y, top_left_square, pixel_to_mm_ratio)
-                            send_robot_approx(mid_x_cm, mid_y_cm, lego_color, orientation)
-    # debug
-    # if lego_count > 0:
-    # print(f"Total Legos detected: {lego_count}") 
-  
-       
+                lego_count = len(lego_data)
+                
+                
+                # Print all Lego data
+                for lego in lego_data: #Iterate through all detected Lego blocks and send to the robot
+                    
+                    call_Print(lego_count, lego["color"], lego["orientation"], lego["mid_x"], lego["mid_y"]) #print in console
+                    
+                    send_robot_approx(lego["color"], lego["orientation"], lego["mid_x"], lego["mid_y"]) #send to robot
+    
     cv2.imshow('processed_frame', frame)
-    call_Print(lego_count,lego_color, orientation, mid_x, mid_y)
-    cv2.waitKey(0)
-    cv2.destroyWindow('processed_frame')
+    cv2.waitKey(1)  # Add a small delay to update the GUI
+
 
 # Function to detect black squares
 def detect_black_squares(blurred):
@@ -239,33 +205,33 @@ def detect_black_squares(blurred):
 
     return black_squares
 
+# Function to extract the color of the Lego block
+def extract_lego_color(frame, x, y, radius=30):
+    x_start = max(0, x - radius)
+    y_start = max(0, y - radius)
+    x_end = min(frame.shape[1], x + radius)
+    y_end = min(frame.shape[0], y + radius)
 
-# Function to extract the color of the lego
-def extract_lego_color(frame):
-    b = frame[:, :, :1]
-    g = frame[:, :, 1:2]
-    r = frame[:, :, 2:]
+    roi = frame[y_start:y_end, x_start:x_end]
 
-    b_mean = np.mean(b)
-    g_mean = np.mean(g)
-    r_mean = np.mean(r)
+    b_mean = np.mean(roi[:, :, 0])
+    g_mean = np.mean(roi[:, :, 1])
+    r_mean = np.mean(roi[:, :, 2])
 
     if b_mean > g_mean and b_mean > r_mean:
-        return "B"
+        return "B"  # Blue
     elif g_mean > r_mean and g_mean > b_mean:
-        return "G"
+        return "G"  # Green
     else:
-        return "R"
+        return "R"  # Red
 
 
-# Function to determine the top-left square and the pixel to mm ratio
+# Function to convert pixel coordinates to mm
 def pixel_to_mm(x, y, origin, ratio):
-    x_mm = (x - origin[0]) * ratio * 10
-    y_mm = (y - origin[1]) * ratio * 10
+    x_mm = (x - origin[0]) * ratio * 10  # Adjust the factor as per your calibration
+    y_mm = (y - origin[1]) * ratio * 10  # Adjust the factor as per your calibration
     return x_mm, y_mm
 
-
-######## Robot Communication ##########
 
 # Function to send a flag to the robot
 def send_flag(flag):
@@ -274,94 +240,147 @@ def send_flag(flag):
     except Exception as e:
         print("Error:", e)
 
+
 # Function to send approximation coordinates to the robot
-def send_robot_approx(mid_x, mid_y, color, orientation):
+def send_robot_approx( lego_color, orientation_processed, mid_x, mid_y):
     try:
-        lego_height = 4
-        lego_height_mm = lego_height * 10
+            mid_x_mm = mid_x
+            mid_y_mm = mid_y
+            color = lego_color
+            orientation = orientation_processed
 
-        approach_height_above_lego = 1
-        approach_height_above_lego_mm = approach_height_above_lego * 10
+            
+            print(" \n \nAqui Lego Color:", lego_color)
+            print("Aqui Lego Orientation:", orientation)
+            print("Aqui Lego Coordinates:", mid_x, mid_y)
+                   
+                   
+            lego_height = 4
+            lego_height_mm = lego_height * 10
 
-        approach_z = -(lego_height_mm + approach_height_above_lego_mm)
-        goal_z = 0
+            approach_height_above_lego = 1
+            approach_height_above_lego_mm = approach_height_above_lego * 10
 
-        if color == "R":
-            approach_position_Red = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}"
-            goal_position_Red = f"{{X {mid_x}, Y {mid_y}, Z {goal_z}, A 0, B 0, C 0}}"
-            robot.write("APPROACH_POS_RED_LEGO", approach_position_Red)
-            robot.write("GOAL_POS_RED_LEGO", goal_position_Red)
-            robot.write("C", color)
-            robot.write("O", orientation)
+            approach_z = -(lego_height_mm + approach_height_above_lego_mm)
+            goal_z = 0
 
-        elif color == "G":
-            approach_position_Green = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}"
-            goal_position_Green = f"{{X {mid_x}, Y {mid_y}, Z {goal_z}, A 0, B 0, C 0}}"
-            robot.write("APPROACH_POS_GREEN_LEGO", approach_position_Green)
-            robot.write("GOAL_POS_GREEN_LEGO", goal_position_Green)
-            robot.write("C", color)
-            robot.write("O", orientation)
+            if color == "R":
+                
+                #print("ENTREI AQUI NO VERMELHO")
+                approach_position_Red = f"{{X {mid_x_mm}, Y {mid_y_mm}, Z {approach_z}, A 0, B 0, C 0}}"
+                goal_position_Red = f"{{X {mid_x_mm}, Y {mid_y_mm}, Z {goal_z}, A 0, B 0, C 0}}"
+                
+                print("################## RED ROBOT SEND #########################")
+                print("APPROACH_POS_RED_LEGO",approach_position_Red)
+                print("GOAL_POS_RED_LEGO",goal_position_Red)
+                print("C", color)
+                print("O", orientation)
+                print("\n\n")
+                
+                robot.write("APPROACH_POS_RED_LEGO", approach_position_Red)
+                robot.write("GOAL_POS_RED_LEGO", goal_position_Red)
+                robot.write("C", color)
+                robot.write("O", orientation)
+                
+                
+                
 
-        elif color == "B":
-            approach_position_Blue = f"{{X {mid_x}, Y {mid_y}, Z {approach_z}, A 0, B 0, C 0}}"
-            goal_position_Blue = f"{{X {mid_x}, Y {mid_y}, Z {goal_z}, A 0, B 0, C 0}}"
-            robot.write("APPROACH_POS_BLUE_LEGO", approach_position_Blue)
-            robot.write("GOAL_POS_BLUE_LEGO", goal_position_Blue)
-            robot.write("C", color)
-            robot.write("O", orientation)
+            elif color == "G":
+                
+                #print("ENTREI AQUI NO VERDE")
+                approach_position_Green = f"{{X {mid_x_mm}, Y {mid_y_mm}, Z {approach_z}, A 0, B 0, C 0}}"
+                goal_position_Green = f"{{X {mid_x_mm}, Y {mid_y_mm}, Z {goal_z}, A 0, B 0, C 0}}"
+                
+                
+                print("################## Green ROBOT SEND #########################")
+                print("APPROACH_POS_GREEN_LEGO",approach_position_Green)
+                print("GOAL_POS_GREEN_LEGO",goal_position_Green)
+                print("C", color)
+                print("O", orientation)
+                print("\n\n")
+                robot.write("APPROACH_POS_GREEN_LEGO", approach_position_Green)
+                robot.write("GOAL_POS_GREEN_LEGO", goal_position_Green)
+                robot.write("C", color)
+                robot.write("O", orientation)
+                
+                
+                
+
+            elif color == "B":
+                
+                #print("ENTREI AQUI NO AZUL")
+                approach_position_Blue = f"{{X {mid_x_mm}, Y {mid_y_mm}, Z {approach_z}, A 0, B 0, C 0}}"
+                goal_position_Blue = f"{{X {mid_x_mm}, Y {mid_y_mm}, Z {goal_z}, A 0, B 0, C 0}}"
+                
+                print("################## Blue ROBOT SEND #########################")
+                print("APPROACH_POS_BLUE_LEGO",approach_position_Blue)
+                print("GOAL_POS_BLUE_LEGO",goal_position_Blue)
+                print("C", color)
+                print("O", orientation)
+                print("\n\n")
+                
+                robot.write("APPROACH_POS_BLUE_LEGO", approach_position_Blue)
+                robot.write("GOAL_POS_BLUE_LEGO", goal_position_Blue)
+                robot.write("C", color)
+                robot.write("O", orientation)
+
+                
+
 
     except Exception as e:
-        print("Error:", e)
-
-### INTERFACE ###
-
-# Button click event handlers
+        print(f"Error: {e}")
+        
+# Tkinter interface functions
 def draw_one_clicked():
     print("Button 1")
-    send_flag(1)  # Send flag to the robot
+    send_flag(1)
 
 def draw_two_clicked():
     print("Button 2")
-    send_flag(2)  # Send flag to the robot
+    send_flag(2)
 
 def draw_three_clicked():
     print("Button 3")
-    send_flag(3)  # Send flag to the robot
+    send_flag(3)
 
 def capture_frame():
     global process_frame
-    process_frame = True  # Set the flag to capture and process a frame
+    process_frame = True
+    lego_data = []  # Clear lego_data list
 
-# Function to create and display the Tkinter interface
 def create_interface():
     root = tk.Tk()
     root.title("Robot Controller")
     root.geometry('600x600')
 
-    button1 = tk.Button(root, text="Draw 1", command=draw_one_clicked, width=15, height=2, bd=3, font=("Arial", 12), bg="lightgray", fg="black", padx=10, pady=5)
+    button1 = tk.Button(root, text="Draw 1", command=draw_one_clicked, width=15, height=2, bd=3, font=("Arial", 12),
+                        bg="lightgray", fg="black", padx=10, pady=5)
     button1.pack(padx=20, pady=20)
 
-    button2 = tk.Button(root, text="Draw 2", command=draw_two_clicked, width=15, height=2, bd=3, font=("Arial", 12), bg="lightgray", fg="black", padx=10, pady=5)
+    button2 = tk.Button(root, text="Draw 2", command=draw_two_clicked, width=15, height=2, bd=3, font=("Arial", 12),
+                        bg="lightgray", fg="black", padx=10, pady=5)
     button2.pack(padx=20, pady=20)
 
-    button3 = tk.Button(root, text="Draw 3", command=draw_three_clicked, width=15, height=2, bd=3, font=("Arial", 12), bg="lightgray", fg="black", padx=10, pady=5)
+    button3 = tk.Button(root, text="Draw 3", command=draw_three_clicked, width=15, height=2, bd=3, font=("Arial", 12),
+                        bg="lightgray", fg="black", padx=10, pady=5)
     button3.pack(padx=20, pady=20)
-    
-    button_frame = tk.Button(root, text="Capture Frame", command=capture_frame, width=15, height=2, bd=3, font=("Arial", 12), bg="lightgray", fg="black", padx=10, pady=5)
+
+    button_frame = tk.Button(root, text="Capture Frame", command=capture_frame, width=15, height=2, bd=3,
+                             font=("Arial", 12), bg="lightgray", fg="black", padx=10, pady=5)
     button_frame.pack(padx=20, pady=20)
-    
+
     root.mainloop()
     global video_running
-    video_running = False  # Stop the video capture loop when Tkinter window closes
+    video_running = False
 
-# Create threads for video capture and Tkinter interface
+# Threads for video capture and interface
 video_thread = threading.Thread(target=video_capture)
 interface_thread = threading.Thread(target=create_interface)
 
-# Start the threads
+# Start threads
 video_thread.start()
 interface_thread.start()
 
-# Wait for the threads to finish
+# Wait for threads to finish
 video_thread.join()
 interface_thread.join()
