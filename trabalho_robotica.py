@@ -111,7 +111,7 @@ def video_capture():
 def process_frame_data(frame):
     global top_left_square, pixel_to_mm_ratio, lego_count, lego_color, orientation, mid_x, mid_y, lego_data
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) 
     gray = cv2.medianBlur(gray, 5)
     blurred = cv2.GaussianBlur(gray, (15, 15), 0)
 
@@ -141,12 +141,13 @@ def process_frame_data(frame):
             filtered_circles = []
             for circle in circles[0, :]:
                 x, y, r = circle
-                if 10 <= r <= 35:  # Adjust these values based on your expected circle radius range
+                if 10 <= r <= 35:  # Radius range for Lego blocks
                     filtered_circles.append(circle)
                     cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
                     cv2.circle(frame, (x, y), 2, (0, 0, 255), 3)
 
             if len(filtered_circles) >= 4:
+                
                 kmeans_data = np.array([(circle[0], circle[1]) for circle in filtered_circles])
                 kmeans = KMeans(n_clusters=len(filtered_circles) // 4)
                 kmeans.fit(kmeans_data)
@@ -191,12 +192,13 @@ def process_frame_data(frame):
 # Function to detect black squares
 def detect_black_squares(blurred):
     black_squares = []
-    _, thresh = cv2.threshold(blurred, 50, 255, cv2.THRESH_BINARY_INV)
+    _, thresh = cv2.threshold(blurred, 50, 255, cv2.THRESH_BINARY_INV) 
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
+    
     for contour in contours:
         approx = cv2.approxPolyDP(contour, 0.04 * cv2.arcLength(contour, True), True)
-        if len(approx) == 4 and cv2.contourArea(approx) > 100:
+        
+        if len(approx) == 4 and cv2.contourArea(approx) > 100: # 4 cantos e area maior que 100 faz calculo do centro
             M = cv2.moments(approx)
             if M["m00"] != 0:
                 cX = int(M["m10"] / M["m00"])
@@ -346,7 +348,7 @@ def draw_three_clicked():
 def capture_frame():
     global process_frame
     process_frame = True
-    lego_data = []  # Clear lego_data list
+    
 
 def create_interface():
     root = tk.Tk()
