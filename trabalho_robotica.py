@@ -12,7 +12,7 @@ process_frame = False  # Flag to indicate when to process a frame
 
 # Global variables for Lego processing
 top_left_square = None
-pixel_to_mm_ratio = None
+pixel_to_mm_ratio_value = 0  # Renamed variable = 0
 lego_count = 0
 lego_color = "Unknown"
 orientation = "Unknown"
@@ -109,7 +109,7 @@ def video_capture():
 
 # Function to process each frame
 def process_frame_data(frame):
-    global top_left_square, pixel_to_mm_ratio, lego_count, lego_color, orientation, mid_x, mid_y, lego_data
+    global top_left_square, pixel_to_mm_ratio_value, lego_count, lego_color, orientation, mid_x, mid_y, lego_data
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) 
     gray = cv2.medianBlur(gray, 5)
@@ -118,7 +118,7 @@ def process_frame_data(frame):
     black_squares = detect_black_squares(blurred)
     if black_squares:
         top_left_square = black_squares[0]
-        pixel_to_mm_ratio = 1  # Adjust this based on your calibration
+        pixel_to_mm_ratio_value = calculate_pixel_to_mm_ratio()  # Adjust this based on your calibration
 
         for square in black_squares:
             cv2.rectangle(frame, (square[0] - 5, square[1] - 5), (square[0] + 5, square[1] + 5), (0, 0, 255), 2)
@@ -158,8 +158,8 @@ def process_frame_data(frame):
                 for center in centers:
                     mid_x, mid_y = center
 
-                    if top_left_square is not None and pixel_to_mm_ratio is not None:
-                        mid_x_mm, mid_y_mm = pixel_to_mm(mid_x, mid_y, top_left_square, pixel_to_mm_ratio)
+                    if top_left_square is not None and pixel_to_mm_ratio_value is not None:
+                        mid_x_mm, mid_y_mm = pixel_to_mm(mid_x, mid_y, top_left_square, pixel_to_mm_ratio_value)
                         lego_color = extract_lego_color(frame, int(mid_x), int(mid_y))
                         orientation = determine_orientation(filtered_circles)
 
@@ -230,10 +230,17 @@ def extract_lego_color(frame, x, y, radius=30):
 
 # Function to convert pixel coordinates to mm
 def pixel_to_mm(x, y, origin, ratio):
-    x_mm = (x - origin[0]) * ratio * 10  # Adjust the factor as per your calibration
-    y_mm = (y - origin[1]) * ratio * 10  # Adjust the factor as per your calibration
+    x_mm = (x - origin[0]) * ratio   
+    y_mm = (y - origin[1]) * ratio   
     return x_mm, y_mm
 
+#   calculate the pixel to mm ratio
+def calculate_pixel_to_mm_ratio():
+    
+    lego_length_pixels = 200  # Adjust this based on your calibration
+    lego_length_mm = 130  # LEGO piece length in mm (13 cm)
+    pixel_to_mm_ratio = lego_length_mm / lego_length_pixels
+    return pixel_to_mm_ratio
 
 # Function to send a flag to the robot
 def send_flag(flag):
