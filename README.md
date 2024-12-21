@@ -4,7 +4,7 @@ The program should be able to:
 
     . Read the camera
   
-    . calculate the legos position based on a sqaure that indicates the (0,0) coordenate
+    . calculate the legos position based on a square that indicates the (0,0) coordenate according to the base of the robot
   
     . calculate the lego midpoint base on the circles on top
   
